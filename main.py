@@ -45,6 +45,8 @@ class Plugin:
     async def get_setting(self, key, default):
         return self.settings.getSetting(key, default)
 
+    YT_DLP_EXTRACTOR_ARGS = "youtube:player_client=default,tv_simply"
+
     async def search_yt(self, term: str):
         # Add a check to make sure the process is still running before trying to terminate to avoid ProcessLookupError
         if self.yt_process is not None and self.yt_process.returncode is None:
@@ -60,29 +62,44 @@ class Plugin:
             "bestaudio",
             "--match-filters",
             f"duration<?{20*60}",  # 20 minutes is too long.
+            "--extractor-args",
+            self.YT_DLP_EXTRACTOR_ARGS,
+            "--no-warnings",
+            "--ignore-errors",
             stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
             # The returned JSON can get rather big, so we set a generous limit of 10 MB.
             limit=10 * 1024**2,
         )
 
     async def next_yt_result(self):
         async with self.yt_process_lock:
-            if (
-                not self.yt_process
-                or not (output := self.yt_process.stdout)
-                or not (line := (await output.readline()).strip())
-            ):
+            if not self.yt_process or not (output := self.yt_process.stdout):
                 return None
-            entry = json.loads(line)
-            return self.entry_to_info(entry)
+            # Skip entries without an extractable audio URL (eg age-gated, region-locked)
+            # rather than aborting the whole search.
+            while True:
+                line = (await output.readline()).strip()
+                if not line:
+                    return None
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                info = self.entry_to_info(entry)
+                if info is not None:
+                    return info
 
     @staticmethod
     def entry_to_info(entry):
+        url = entry.get("url")
+        if not url:
+            return None
         return {
-            "url": entry["url"],
-            "title": entry["title"],
-            "id": entry["id"],
-            "thumbnail": entry["thumbnail"],
+            "url": url,
+            "title": entry.get("title", ""),
+            "id": entry.get("id", ""),
+            "thumbnail": entry.get("thumbnail", ""),
         }
 
     def local_match(self, id: str) -> str | None:
@@ -112,15 +129,22 @@ class Plugin:
             "-j",
             "-f",
             "bestaudio",
+            "--extractor-args",
+            self.YT_DLP_EXTRACTOR_ARGS,
+            "--no-warnings",
             stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
         if (
             result.stdout is None
             or len(output := (await result.stdout.read()).strip()) == 0
         ):
             return None
-        entry = json.loads(output)
-        return entry["url"]
+        try:
+            entry = json.loads(output)
+        except json.JSONDecodeError:
+            return None
+        return entry.get("url")
 
     async def download_yt_audio(self, id: str):
         if self.local_match(id) is not None:
@@ -131,6 +155,9 @@ class Plugin:
             f"{id}",
             "-f",
             "bestaudio",
+            "--extractor-args",
+            self.YT_DLP_EXTRACTOR_ARGS,
+            "--no-warnings",
             "-o",
             "%(id)s.%(ext)s",
             "-P",

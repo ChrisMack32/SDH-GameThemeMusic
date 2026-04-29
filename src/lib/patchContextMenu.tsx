@@ -3,11 +3,14 @@ import {
   afterPatch,
   fakeRenderComponent,
   findInReactTree,
-  findModuleChild,
+  findInTree,
+  findModuleByExport,
+  Export,
   MenuItem,
   Navigation,
   Patch
 } from '@decky/ui'
+import { FC } from 'react'
 import useTranslations from '../hooks/useTranslations'
 
 function ChangeMusicButton({ appId }: { appId: number }) {
@@ -40,6 +43,46 @@ const spliceChangeMusic = (children: any[], appid: number) => {
   )
 }
 
+const isOpeningAppContextMenu = (items: any[]) => {
+  if (!items?.length) return false
+  return !!findInReactTree(
+    items,
+    (x) =>
+      x?.props?.onSelected &&
+      x?.props?.onSelected.toString().includes('launchSource')
+  )
+}
+
+const handleItemDupes = (items: any[]) => {
+  const gtmIdx = items.findIndex(
+    (x: any) => x?.key === 'game-theme-music-change-music'
+  )
+  if (gtmIdx != -1) items.splice(gtmIdx, 1)
+}
+
+const patchMenuItems = (menuItems: any[], appid: number) => {
+  let updatedAppid: number = appid
+  // find the first menu component that has the correct appid assigned to _owner
+  const parentOverview = menuItems.find(
+    (x: any) =>
+      x?._owner?.pendingProps?.overview?.appid &&
+      x._owner.pendingProps.overview.appid !== appid
+  )
+  if (parentOverview) {
+    updatedAppid = parentOverview._owner.pendingProps.overview.appid
+  }
+  // Oct 2025 client
+  if (updatedAppid === appid) {
+    const foundApp = findInTree(menuItems, (x) => x?.app?.appid, {
+      walkable: ['props', 'children']
+    })
+    if (foundApp) {
+      updatedAppid = foundApp.app.appid
+    }
+  }
+  spliceChangeMusic(menuItems, updatedAppid)
+}
+
 /**
  * Patches the game context menu.
  * @param LibraryContextMenu The game context menu.
@@ -59,41 +102,56 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
     LibraryContextMenu.prototype,
     'render',
     (_: Record<string, unknown>[], component: any) => {
-      const appid: number = component._owner.pendingProps.overview.appid
+      let appid = 0
+      if (component._owner) {
+        appid = component._owner.pendingProps.overview.appid
+      } else {
+        // Oct 2025 client
+        const foundApp = findInTree(
+          component.props.children,
+          (x) => x?.app?.appid,
+          { walkable: ['props', 'children'] }
+        )
+        if (foundApp) {
+          appid = foundApp.app.appid
+        }
+      }
 
       if (!patches.inner) {
-        patches.inner = afterPatch(
-          component.type.prototype,
-          'shouldComponentUpdate',
-          ([nextProps]: any, shouldUpdate: any) => {
+        patches.inner = afterPatch(component, 'type', (_: any, ret: any) => {
+          // initial render
+          afterPatch(ret.type.prototype, 'render', (_: any, ret2: any) => {
+            const menuItems = ret2.props.children[0]
+            if (!isOpeningAppContextMenu(menuItems)) return ret2
             try {
-              const gtmIdx = nextProps.children.findIndex(
-                (x: any) => x?.key === 'game-theme-music-change-music'
-              )
-              if (gtmIdx != -1) nextProps.children.splice(gtmIdx, 1)
-              // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            } catch (e) {
-              return component
+              handleItemDupes(menuItems)
+            } catch {
+              return ret2
             }
+            patchMenuItems(menuItems, appid)
+            return ret2
+          })
 
-            if (shouldUpdate === true) {
-              let updatedAppid: number = appid
-              // find the first menu component that has the correct appid assigned to _owner
-              const parentOverview = nextProps.children.find(
-                (x: any) =>
-                  x?._owner?.pendingProps?.overview?.appid &&
-                  x._owner.pendingProps.overview.appid !== appid
-              )
-              // if found then use that appid
-              if (parentOverview) {
-                updatedAppid = parentOverview._owner.pendingProps.overview.appid
+          // when steam decides to refresh app overview
+          afterPatch(
+            ret.type.prototype,
+            'shouldComponentUpdate',
+            ([nextProps]: any, shouldUpdate: any) => {
+              try {
+                handleItemDupes(nextProps.children)
+              } catch {
+                return shouldUpdate
               }
-              spliceChangeMusic(nextProps.children, updatedAppid)
-            }
 
-            return shouldUpdate
-          }
-        )
+              if (shouldUpdate === true) {
+                patchMenuItems(nextProps.children, appid)
+              }
+
+              return shouldUpdate
+            }
+          )
+          return ret
+        })
       } else {
         spliceChangeMusic(component.props.children, appid)
       }
@@ -112,22 +170,11 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
  * Game context menu component.
  */
 export const LibraryContextMenu = fakeRenderComponent(
-  findModuleChild((m) => {
-    if (typeof m !== 'object') return
-    for (const prop in m) {
-      if (
-        m[prop]?.toString() &&
-        m[prop].toString().includes('().LibraryContextMenu')
-      ) {
-        return Object.values(m).find(
-          (sibling) =>
-            sibling?.toString().includes('createElement') &&
-            sibling?.toString().includes('navigator:')
-        )
-      }
-    }
-    return
-  })
+  Object.values(
+    findModuleByExport(
+      (e: Export) => e?.toString && e.toString().includes('().LibraryContextMenu')
+    )
+  ).find((sibling) => sibling?.toString().includes('navigator:')) as FC
 ).type
 
 export default contextMenuPatch

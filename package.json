@@ -1,6 +1,6 @@
 {
   "name": "sdh-gamethememusic",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Play theme songs on your game pages",
   "type": "module",
   "scripts": {
@@ -28,8 +28,8 @@
   "remote_binary": [
     {
       "name": "yt-dlp",
-      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2024.11.18/yt-dlp",
-      "sha256hash": "78b4454c83d0f7efe9b26163e82bede0febf0039ae6bacf2963abcae941ac11a"
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux",
+      "sha256hash": "c2b0189f581fe4a2ddd41954f1bcb7d327db04b07ed0dea97e4f1b3e09b5dd8e"
     }
   ],
   "devDependencies": {
