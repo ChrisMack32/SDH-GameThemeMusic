@@ -111,19 +111,24 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
 /**
  * Game context menu component.
  */
+const safeToString = (value: unknown): string => {
+  if (typeof value !== 'function') return ''
+  try {
+    return Function.prototype.toString.call(value)
+  } catch {
+    return ''
+  }
+}
+
 export const LibraryContextMenu = fakeRenderComponent(
   findModuleChild((m) => {
-    if (typeof m !== 'object') return
+    if (typeof m !== 'object' || m === null) return
     for (const prop in m) {
-      if (
-        m[prop]?.toString() &&
-        m[prop].toString().includes('().LibraryContextMenu')
-      ) {
-        return Object.values(m).find(
-          (sibling) =>
-            sibling?.toString().includes('createElement') &&
-            sibling?.toString().includes('navigator:')
-        )
+      if (safeToString(m[prop]).includes('().LibraryContextMenu')) {
+        return Object.values(m).find((sibling) => {
+          const str = safeToString(sibling)
+          return str.includes('createElement') && str.includes('navigator:')
+        })
       }
     }
     return
