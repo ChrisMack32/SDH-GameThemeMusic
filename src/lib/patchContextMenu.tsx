@@ -3,11 +3,13 @@ import {
   afterPatch,
   fakeRenderComponent,
   findInReactTree,
-  findModuleChild,
+  findModuleByExport,
+  Export,
   MenuItem,
   Navigation,
   Patch
 } from '@decky/ui'
+import { FC } from 'react'
 import useTranslations from '../hooks/useTranslations'
 
 function ChangeMusicButton({ appId }: { appId: number }) {
@@ -111,28 +113,12 @@ const contextMenuPatch = (LibraryContextMenu: any) => {
 /**
  * Game context menu component.
  */
-const safeToString = (value: unknown): string => {
-  if (typeof value !== 'function') return ''
-  try {
-    return Function.prototype.toString.call(value)
-  } catch {
-    return ''
-  }
-}
-
 export const LibraryContextMenu = fakeRenderComponent(
-  findModuleChild((m) => {
-    if (typeof m !== 'object' || m === null) return
-    for (const prop in m) {
-      if (safeToString(m[prop]).includes('().LibraryContextMenu')) {
-        return Object.values(m).find((sibling) => {
-          const str = safeToString(sibling)
-          return str.includes('createElement') && str.includes('navigator:')
-        })
-      }
-    }
-    return
-  })
+  Object.values(
+    findModuleByExport(
+      (e: Export) => e?.toString && e.toString().includes('().LibraryContextMenu')
+    )
+  ).find((sibling) => sibling?.toString().includes('navigator:')) as FC
 ).type
 
 export default contextMenuPatch
