@@ -1,6 +1,6 @@
 # Game Theme Music
 
-# No longer Maintained.
+# Not really Maintained.. but I wanted it to work again so here it is
 
 [![Crowdin](https://badges.crowdin.net/sdh-gamethememusic/localized.svg)](https://crowdin.com/project/sdh-gamethememusic) [![Chat](https://img.shields.io/badge/chat-on%20discord-7289da.svg)](https://deckbrew.xyz/discord)
 
